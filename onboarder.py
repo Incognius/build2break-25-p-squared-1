@@ -2,7 +2,12 @@
 import re
 from langchain.prompts import PromptTemplate
 from langchain.schema.output_parser import StrOutputParser
+from langchain.output_parsers import PydanticOutputParser # Modified import
 from langchain.schema.runnable import RunnableLambda
+from pydantic import BaseModel, Field
+
+class OnboardingPlan(BaseModel):
+    plan: str = Field(description="A comprehensive, structured, and welcoming onboarding plan for a new employee.")
 
 def parse_and_format_onboarding_input(input_data):
     """
@@ -72,6 +77,7 @@ def create_onboarder_chain(llm):
     ONBOARDING PLAN:
     """
     prompt = PromptTemplate.from_template(template)
+    output_parser = PydanticOutputParser(pydantic_object=OnboardingPlan)
 
     # This new chain is simpler and more direct.
     # 1. The RunnableLambda now handles all parsing and formatting.
@@ -80,7 +86,7 @@ def create_onboarder_chain(llm):
         RunnableLambda(parse_and_format_onboarding_input)
         | prompt
         | llm
-        | StrOutputParser()
+        | output_parser
     )
     
     print("Onboarder chain created successfully (Robust Dynamic Version).")

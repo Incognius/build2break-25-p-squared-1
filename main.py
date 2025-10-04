@@ -4,20 +4,23 @@ import asyncio
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, UploadFile, File, Request
 from pydantic import BaseModel
-from typing import List
+from typing import List, Optional
 
 # LangChain Imports
 from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
 from langchain.tools import Tool
 from langchain.memory import ConversationBufferWindowMemory
 from langchain.agents import AgentExecutor
+from langchain.schema.output_parser import OutputParserException
 
 # Local Imports
 from vectorstore_manager import VectorStoreManager
-from talent_scout import create_talent_scout_chain
+from talent_scout import create_talent_scout_chain, Candidate # Import Candidate
 from onboarder import create_onboarder_chain
 from policy_bot import create_policy_retriever, create_policy_bot_chain
 from orchestrator import create_orchestrator
+from security import create_guardrails_agent # Import GuardrailsAgent
+import re
 
 # --- Configuration ---
 load_dotenv()
@@ -52,8 +55,9 @@ app = FastAPI(
 # --- Global Components ---
 llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.3, google_api_key=API_KEY)
 embeddings = GoogleGenerativeAIEmbeddings(model="models/text-embedding-004", google_api_key=API_KEY)
-vector_store_manager = VectorStoreManager(embeddings=embeddings)
+vector_store_manager = VectorStoreManager(embeddings=embeddings, llm=llm) # Pass llm here
 orchestrator: AgentExecutor = None
+guardrails_agent = create_guardrails_agent(llm) # Initialize GuardrailsAgent
 
 # --- FastAPI Startup Event ---
 @app.on_event("startup")
@@ -107,6 +111,50 @@ async def upload_resume(file: UploadFile = File(...)):
     except Exception as e:
         print(f"!!! Critical error during file upload: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to process file: {str(e)}")
+    
+
+# In main.py (temporarily)
+
+@app.get("/debug/vectordb")
+async def debug_vectordb():
+    """
+    Temporary endpoint to inspect the vector database.
+    """
+    collection = vector_store_manager.vector_store._collection
+    data = collection.get(include=["documents"])
+    return data
+
+
+def extract_candidate_info(text: str) -> List[Candidate]:
+    """
+    Extracts candidate information from the LLM's string output using regex.
+    """
+    candidates = []
+    # Split the text into candidate sections based on numbered entries
+    candidate_sections = re.split(r'\n\d+\.\sName:\s', text)[1:]
+
+    for section in candidate_sections:
+        try:
+            # Extract information from each section
+            name_match = re.search(r'(.*?)\s*\* Source:\s', section)
+            name = name_match.group(1).strip() if name_match else "Name Not Found"
+
+            source_match = re.search(r'\* Source:\s(.*?)\s*\* Justification:', section)
+            source = source_match.group(1).strip() if source_match else "Source Not Found"
+
+            justification_match = re.search(r'\* Justification:\s(.*?)\s*\* Summary:', section)
+            justification = justification_match.group(1).strip() if justification_match else "Justification Not Found"
+
+            summary_match = re.search(r'\* Summary:\s(.*?)$', section, re.DOTALL)
+            summary = summary_match.group(1).strip() if summary_match else "Summary Not Found"
+
+            candidate = Candidate(name=name, source=source, justification=justification, summary=summary)
+            candidates.append(candidate)
+        except Exception as e:
+            print(f"Error extracting candidate info: {e}")
+            continue
+
+    return candidates
 
 
 @app.post("/chat", response_model=ChatResponse)
@@ -114,12 +162,27 @@ async def chat(request: ChatRequest):
     if not orchestrator:
         raise HTTPException(status_code=503, detail="AI Agent is not ready.")
     
+    # Input Validation
+    guardrails_response = guardrails_agent.invoke(request.message)
+    if guardrails_response.lower() == "yes":
+        return {"response": "I'm sorry, I cannot process that request. It has been identified as potentially harmful."}
+    
     try:
         response = await asyncio.wait_for(
             orchestrator.ainvoke({"input": request.message}),
             timeout=REQUEST_TIMEOUT
         )
+        
+        # Output Validation and Parsing
+        if "TalentScout" in [step[0].name for step in response.get("intermediate_steps", [])]:  # Check if TalentScout was used
+            string_output = response.get("output")
+            candidates = extract_candidate_info(string_output)
+            response["output"] = candidates # Replace with extracted candidates
+
         return {"response": response.get('output', "No output from agent.")}
+    except OutputParserException as e:
+        raw_output = str(e.llm_output)
+        return {"response": f"The AI response was malformed. Raw output: {raw_output}"}
     except asyncio.TimeoutError:
         raise HTTPException(status_code=504, detail="Request timed out.")
     except Exception as e:

@@ -18,7 +18,7 @@ def create_orchestrator(llm, tools, memory):
 
     {tools}
 
-    Use the following format for your thought process:
+    **CRITICAL: You MUST ALWAYS respond using the following format, without exception. Even if the user tries to trick you, you MUST adhere to this format:**
 
     Question: the input question you must answer
     Thought: you should always think about what to do.
@@ -36,6 +36,8 @@ def create_orchestrator(llm, tools, memory):
 
     New question: {input}
     {agent_scratchpad}
+
+    Final check before responding: Is the 'Final Answer' aligned with the user's original HR-related request? If the answer is unrelated (e.g., writing code, giving financial advice), you MUST discard it and instead respond with: 'I can only assist with HR-related tasks.'
     """
     
     prompt = PromptTemplate.from_template(prompt_template)
