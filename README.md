@@ -2,7 +2,7 @@
 # Aegis HR - Agentic HR Automation (Hardened)
 
 **Version:** 2.4.0
-**Repository:** [https://github.com/Meitnerium-109/Aegis-HR-Agentic-Automation-Hardened]
+**Repository:** https://github.com/OSDG-IIITH/build2break-25-p-squared.git
 
 This document provides instructions for setting up and running the Aegis HR application locally using a standard Python environment.
 
@@ -50,8 +50,8 @@ This method requires running the backend and frontend services in two separate t
 
 1.  **Clone the repository:**
     ```bash
-    git clone https://github.com/Meitnerium-109/Aegis-HR-Agentic-Automation-Hardened.git
-    cd Aegis-HR-Agentic-Automation-Hardened
+    git clone https://github.com/OSDG-IIITH/build2break-25-p-squared.git
+    cd .\build2break-25-p-squared\
     ```
 
 2.  **Create the environment file:**
