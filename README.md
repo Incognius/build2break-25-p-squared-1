@@ -44,7 +44,6 @@ This method requires running the backend and frontend services in two separate t
 *   Python 3.9+
 *   Git
 *   A `GOOGLE_API_KEY` with access to the Generative AI API.  
-  API Key: AIzaSyA0j-AY-jg1WNLybrmZ1NbexV09u97rHJU
 
 ### Step 1: Project Setup
 
